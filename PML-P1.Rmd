@@ -1,0 +1,99 @@
+---
+title: 'Practical Machine Learning: Course Project'
+author: "Yuffi"
+date: "18 November 2016"
+output: html_document
+---
+
+## I. Introduction
+This report utilized data collected through sensors to predict the particular activity of exercise. The input data is Weight Lifting Exercise Dataset [[1]( http://groupware.les.inf.puc-rio.br/har)]. The report described how the model is built, followed by model validation including cross validation and out of sample error analysis, and the choices based on the model. The report then used the model the predict 20 different test cases.
+
+## II. Data Pre-Processing
+This session described the steps to load data and pre-process the data to prepare for model building.
+
+Firstly, necessary libraries were loaded:
+```{r,message=FALSE, warning=FALSE}
+library(caret)
+library(gbm)
+set.seed(10086)
+```
+
+The input data including both test and training datasets were downloaded and loaded into the environment:
+```{r, cache=TRUE}
+# file names for training & test datasets
+destFile_train = 'pml-training.csv'
+destFile_test  = 'pml-testing.csv'
+
+# download & save datasets if they are not in folder
+if (!file.exists(destFile_train)) {
+  tmp = "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+  download.file(tmp,destFile_train)
+}  
+
+if (!file.exists(destFile_test)) {
+  tmp = "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+  download.file(tmp,destFile_test)
+}  
+
+# read training & test datasets
+input_train = read.csv(destFile_train,na.strings = c("NA","#DIV/0!",""))
+input_test  = read.csv(destFile_test,na.strings = c("NA","#DIV/0!",""))
+```
+
+The loaded datasets were then pre-processed to reduce empty fields and near-zero values:
+```{r,cache=TRUE}
+# remove index & timestamp,
+input_train_c = input_train[,-c(1:7)]
+input_test_c = input_test[,-c(1:7)]
+  
+# remove near-zero values
+input_train_c = input_train_c[, names(input_train_c)[!(nzv(input_train_c, saveMetrics = T)[, 4])]]
+input_test_c = input_test_c[, names(input_test_c)[!(nzv(input_test_c, saveMetrics = T)[, 4])]]
+
+# remove columns contains almost NA
+input_train_c = Filter(function(x)!mean(is.na(x))>0.9, input_train_c)
+input_test_c = Filter(function(x)!mean(is.na(x))>0.9, input_test_c)
+```
+
+To prepare for cross validation, the training dataset was seperated into two parts:
+```{r,cache=TRUE}
+# 60% of training dataset is used to train model, 40% is used for test
+tmp = createDataPartition(input_train_c$classe, p = 0.6, list = FALSE)
+input_subTrain = input_train_c[tmp,]
+input_subTest= input_train_c[-tmp,]
+```
+
+
+## III. Establishing the Model
+This session described the steps to build the prediction model using the pre-processed datasets.
+
+### 1. Prediction Model with Random Forest
+Random Forest was used to build the prediction model:
+```{r,cache=TRUE}
+controlRF = trainControl(method="cv", number=3, verboseIter=FALSE)
+mod_rf = train(classe ~ ., data = input_subTrain, method = "rf", trControl = controlRF)
+mod_rf$finalModel
+```
+
+### 2. Model Evaluation
+The model was then evaluated as below:
+```{r,cache=TRUE}
+# Evaluate Model
+pred_rf = predict(mod_rf, input_subTest) # predict
+con_rf = confusionMatrix(pred_rf, input_subTest$classe)
+con_rf
+```
+
+The accuracy is `r con_rf$overall[1]` which is larger then 99%, and out-of-sample error is `r 1-con_rf$overall[1]`. Due to the high accuracy, the model is used to predict the test dataset.
+
+
+## IV. Prediction and Results 
+The session used the model build in the previous session to predict exercise class in test dataset, and the results were shown below:
+```{r}
+output_pred = predict(mod_rf, input_test_c)
+output_pred
+```
+
+## References
+[1] Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. “Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human ’13)”. Stuttgart, Germany: ACM SIGCHI, 2013.
+
